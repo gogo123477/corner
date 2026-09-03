@@ -1,8 +1,10 @@
 name: Deploy to Vercel
 
-# Two ways to run:
-#  - manually (Actions → Deploy to Vercel → Run workflow) with a Vercel token as input;
-#  - on every push to main, if a VERCEL_TOKEN repository secret is set.
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   VERCEL_TOKEN          required for automatic deploys on push to main
+#   CORNER_DATABASE_URL   Neon postgres URL (or pass it as a manual-run input once)
+#   ANTHROPIC_API_KEY     optional
+# Manual runs (Actions → Deploy to Vercel → Run workflow) can pass any of these as inputs.
 on:
   workflow_dispatch:
     inputs:
@@ -56,8 +58,8 @@ jobs:
         if: steps.tok.outputs.skip != 'true'
         env:
           VERCEL_TOKEN: "${{ steps.tok.outputs.token }}"
-          DATABASE_URL_IN: "${{ inputs.database_url }}"
-          ANTHROPIC_IN: "${{ inputs.anthropic_api_key }}"
+          DATABASE_URL_IN: "${{ inputs.database_url || secrets.CORNER_DATABASE_URL }}"
+          ANTHROPIC_IN: "${{ inputs.anthropic_api_key || secrets.ANTHROPIC_API_KEY }}"
         run: |
           pip install -q cryptography
           existing=$(vercel env ls production --token "$VERCEL_TOKEN" 2>/dev/null || true)
