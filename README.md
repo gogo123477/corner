@@ -24,7 +24,7 @@ web/       React + Vite PWA, mobile-first · Brief · Log · Settings
 cd backend
 uv venv .venv && uv pip install --python .venv/bin/python -e ".[dev]"
 cp .env.example .env          # defaults: SQLite, dev auth, no LLM key → template briefs
-.venv/bin/pytest              # 45 tests
+.venv/bin/pytest              # 48 tests
 .venv/bin/uvicorn app.main:app --reload   # http://localhost:8000/docs
 ```
 
@@ -99,8 +99,13 @@ Mobile-first, installable as a PWA. Three tabs:
 Auth is a dev token in `localStorage` until managed auth lands. The backend's
 `CORNER_CORS_ORIGINS` must include the web origin.
 
+## Deploy
+
+One Vercel project (static web + Python function + cron) with Neon Postgres.
+See [`DEPLOY.md`](DEPLOY.md).
+
 ## Next
 
-1. Run the backend against Neon/Supabase Postgres and switch auth to `jwt`.
+1. Deploy (see `DEPLOY.md`), use it daily for a week, note every miss.
 2. Google Calendar OAuth read so busy blocks stop being manual.
 3. Spike 0 (food estimation) before any Phase 1 work — see the design doc §8.

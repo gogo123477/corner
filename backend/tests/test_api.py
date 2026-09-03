@@ -177,3 +177,30 @@ def test_vapid_keygen_shape():
 
     pub, priv = keygen()
     assert len(pub) == 87 and len(priv) == 43  # base64url of 65 and 32 bytes
+
+
+def test_morning_job_route_requires_secret(client, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "cron_secret", "s3cret")
+    client.get("/v1/profile")  # ensure a user exists
+    r = client.get("/v1/jobs/morning", headers={"Authorization": "Bearer wrong"})
+    assert r.status_code == 401
+    r = client.get("/v1/jobs/morning", headers={"Authorization": "Bearer s3cret"})
+    assert r.status_code == 200 and r.json()["computed"] >= 1
+
+
+def test_morning_job_route_503_when_unconfigured(client, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "cron_secret", "")
+    monkeypatch.delenv("CRON_SECRET", raising=False)
+    assert client.get("/v1/jobs/morning").status_code == 503
+
+
+def test_db_url_normalization():
+    from app.db import _normalize
+
+    assert _normalize("postgres://u:p@h/db").startswith("postgresql+psycopg://u:p@h/db")
+    assert _normalize("postgresql://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
+    assert _normalize("sqlite:///x.db") == "sqlite:///x.db"

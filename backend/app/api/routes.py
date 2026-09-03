@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from datetime import date
+import os
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -52,6 +54,25 @@ def put_profile(
     db.add(prof)
     db.commit()
     return get_profile(user, db)
+
+
+# ---------- jobs (called by the scheduler, not by users) ----------
+
+
+@router.get("/jobs/morning")
+def run_morning_job(authorization: str | None = Header(default=None)):
+    """Pre-compute every user's brief and send the nudge. Vercel Cron calls this with
+    `Authorization: Bearer $CRON_SECRET`; any scheduler can do the same."""
+    from app.jobs.morning_brief import run
+
+    settings = get_settings()
+    secret = settings.cron_secret or os.environ.get("CRON_SECRET", "")
+    if not secret:
+        raise HTTPException(503, "cron secret is not configured")
+    if authorization != f"Bearer {secret}":
+        raise HTTPException(401, "bad cron secret")
+    today = datetime.now(ZoneInfo(settings.timezone)).date()
+    return {"on": today.isoformat(), **run(today, push=True)}
 
 
 # ---------- push ----------

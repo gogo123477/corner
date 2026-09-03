@@ -1,0 +1,8 @@
+web/node_modules
+web/dist
+backend/.venv
+backend/tests
+backend/*.db
+**/__pycache__
+**/*.egg-info
+docs

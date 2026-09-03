@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:hello@example.com"
+    cron_secret: str = (
+        ""  # Vercel sets CRON_SECRET; mirrored here as CORNER_CRON_SECRET or CRON_SECRET
+    )
+    timezone: str = "Asia/Jerusalem"  # "today" for the morning job
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"  # comma-separated
 
 

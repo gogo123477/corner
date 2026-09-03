@@ -1,5 +1,6 @@
 /** Typed client for the Corner backend. Dev auth for now; swap getToken() for the managed-auth session. */
-export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+// Same origin in production (Vercel rewrites /v1/* to the Python function); localhost in dev.
+export const API_BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? "http://localhost:8000" : "");
 
 export function getToken(): string {
   try {

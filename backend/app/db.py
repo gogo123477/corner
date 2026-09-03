@@ -6,7 +6,16 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import get_settings
 
 
+def _normalize(url: str) -> str:
+    """Neon / Vercel hand out postgres:// or postgresql:// URLs; SQLAlchemy needs the driver."""
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix) :]
+    return url
+
+
 def _make_engine(url: str):
+    url = _normalize(url)
     if url.startswith("sqlite"):
         return create_engine(url, connect_args={"check_same_thread": False})
     return create_engine(url, pool_pre_ping=True)
