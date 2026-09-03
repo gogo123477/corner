@@ -39,7 +39,13 @@ jobs:
           SECRET_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           T="${INPUT_TOKEN:-$SECRET_TOKEN}"
-          if [ -z "$T" ]; then echo "No Vercel token: skipping deploy."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ -z "$T" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::No Vercel token. Add a repository secret named VERCEL_TOKEN (Settings → Secrets and variables → Actions) or pass one as the run input."
+              exit 1
+            fi
+            echo "No VERCEL_TOKEN secret: skipping deploy on push."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           echo "::add-mask::$T"
           echo "token=$T" >> "$GITHUB_OUTPUT"
 
