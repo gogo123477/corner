@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Corner",
+    "slug": "corner",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "corner",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "app.corner.mobile",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "Corner reads workouts, steps and sleep to plan your day. Raw samples stay on your phone.",
+        "NSCalendarsFullAccessUsageDescription": "Corner reads when your meetings are so it can find time to train. Titles and attendees are never uploaded.",
+        "NSCalendarsUsageDescription": "Corner reads when your meetings are so it can find time to train. Titles and attendees are never uploaded."
+      },
+      "entitlements": { "com.apple.developer.healthkit": true }
+    },
+    "android": {
+      "package": "app.corner.mobile"
+    },
+    "plugins": [
+      "expo-calendar",
+      "expo-notifications",
+      "expo-secure-store",
+      ["@kingstinct/react-native-healthkit", { "NSHealthShareUsageDescription": "Corner reads workouts, steps and sleep to plan your day." }]
+    ]
+  }
+}
