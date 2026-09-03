@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.3",
     "anthropic>=0.50",
     "pyjwt>=2.9",
+    "pywebpush>=2.0",
 ]
 
 [project.optional-dependencies]

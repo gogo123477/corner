@@ -1,7 +1,8 @@
 # Technical Design & Work Plan — "Corner"
 ### Cross-domain personal coach · companion to PRD v0.1
 
-*Status: Draft v0.1 · Owner: Yaniv Keren · Last updated: 2 Sep 2026*
+*Status: Draft v0.2 · Owner: Yaniv Keren · Last updated: 3 Sep 2026*
+*v0.2: client is a web app (PWA), not a native iOS app. Health-platform reads move to Phase 2+; Phase 0–1 inputs are in-app logging and calendar integration.*
 *Read alongside: PRD-Corner-personal-coach.md*
 
 ---
@@ -23,11 +24,11 @@ Four principles drive every decision below:
 
 ```mermaid
 flowchart TD
-    subgraph Client["Mobile App (React Native / Expo)"]
+    subgraph Client["Web App (React PWA, mobile-first)"]
         UI[Morning Brief + Check-in UI]
-        HK[Health platform bridge<br/>HealthKit / Health Connect]
-        CAL[Calendar read]
-        CAM[Camera / Mic capture]
+        LOG[Quick log<br/>sessions · sleep · busy blocks]
+        CAL[Calendar connect<br/>Google Calendar OAuth]
+        CAM[Camera / Mic capture<br/>browser APIs]
     end
 
     subgraph Backend["Backend API (FastAPI)"]
@@ -49,7 +50,7 @@ flowchart TD
     end
 
     UI <--> API
-    HK --> API
+    LOG --> API
     CAL --> API
     CAM --> API
     API --> ENGINE
@@ -72,7 +73,7 @@ flowchart TD
 
 | Layer | Recommendation | Why | Main tradeoff |
 |---|---|---|---|
-| **Mobile client** | React Native + Expo | One codebase, native access to HealthKit/Health Connect + calendar + camera; matches your React background | Native health modules need config; not as raw-fast as pure native |
+| **Client** | Web app: React + Vite, installable PWA, mobile-first | No app-store cycle, one URL, matches your React background; camera/mic via browser APIs | No HealthKit/Health Connect from a browser — movement data comes from in-app logging and, later, wearable/Strava APIs |
 | **Backend** | Python + FastAPI | Clean async, great for LLM orchestration, matches your Python tooling | Python concurrency ceiling — irrelevant at this scale |
 | **DB** | Postgres (managed — Supabase / Neon / RDS) | Relational fits the day/activity/meal model; JSONB for flexible estimate blobs | — |
 | **Cache / queue** | Redis | Cache briefs, rate-limit, lightweight job queue | — |
@@ -82,7 +83,7 @@ flowchart TD
 | **Object storage** | S3-class, short TTL | Hold food photos only long enough to estimate, then delete | — |
 | **Auth** | Managed (Supabase Auth / Clerk / Auth0) | Don't hand-roll auth on health data | — |
 
-**Platform-first recommendation:** start **iOS via Expo**. HealthKit gives the richest free movement/recovery signal, iOS skews toward the paying busy-pro segment, and one platform keeps the first cut fast. Android (Health Connect) is the fast-follow. *(This resolves the PRD's blocking "platform" question — pending your call.)*
+**Platform decision (v0.2): web app first.** A mobile-first PWA ships without an app-store cycle, works on every phone from one URL, and keeps the first cut fast. The cost is health-platform access: a browser cannot read HealthKit or Health Connect, so movement and sleep enter through a ten-second in-app log in Phase 0–1, with Strava / Garmin / Oura-style APIs as the Phase 2+ path to automatic capture. A native wrapper (Capacitor) is the fallback if automatic health capture proves essential for retention.
 
 ---
 
@@ -128,9 +129,9 @@ Thin layer that turns engine state + reason codes into user-facing output and pa
 
 | Integration | v1 approach | Notes |
 |---|---|---|
-| **Movement** | HealthKit (iOS) read | Free steps/workouts/active energy; HR & sleep if user grants |
-| **Calendar** | Native calendar read (iOS EventKit) or Google Calendar API | Only need event times + rough type; consider on-device parsing to avoid storing raw calendar |
-| **Push** | Expo push / APNs | Morning brief nudge, gentle comeback nudge |
+| **Movement & sleep** | In-app quick log (session type, minutes, how hard; hours slept) | Phase 2+: Strava / Garmin / Oura APIs for automatic capture |
+| **Calendar** | Manual busy blocks (Phase 0) → Google Calendar OAuth read (Phase 1) | Only event times + coarse type leave the client; titles are never stored |
+| **Push** | Web Push (VAPID) | Morning brief nudge, gentle comeback nudge; works on iOS 16.4+ when installed to the home screen |
 
 Store as little raw third-party data as possible — derive what the engine needs, keep the rest on-device.
 
@@ -143,7 +144,7 @@ Store as little raw third-party data as possible — derive what the engine need
 | `users` | id, auth_ref, created_at | Account |
 | `profiles` | user_id, goals, constraints, baseline stats | Personalization inputs (kept minimal & sensitive-flagged) |
 | `days` | user_id, date, ledger_json, plan_json, status | The daily "one budget" snapshot + generated plan |
-| `activities` | user_id, ts, type, source, load_metrics | Normalized movement (from HealthKit etc.) |
+| `activities` | user_id, ts, type, source, load_metrics | Normalized movement (quick log now; wearable APIs later) |
 | `meals` | user_id, ts, estimate_json, confidence, input_type | Food check-ins (no stored photo) |
 | `cal_events` | user_id, start, end, coarse_type | Minimal calendar-derived events |
 | `recommendations` | day_id, domain, value, reason_code, status | Each rec + why + accepted/overridden |
@@ -171,7 +172,7 @@ Notes: `*_json` are JSONB for flexible estimate/plan blobs. Sensitive columns (p
 | Food estimation not accurate enough to drive good recs | **High** | Spike 0 before Phase 1; fallbacks ready (constrained input / voice-only / DB assist) |
 | LLM produces unsafe or off numbers | High | Numbers only from deterministic engine; LLM output validated against schema + rails |
 | Cross-domain logic feels wrong → trust collapses | High | Explainable reason codes + one-tap override; tune re-plan acceptance rate (PRD §7) |
-| Health API friction / permission drop-off | Medium | Graceful degradation — brief still works on partial data; ask permissions progressively |
+| Manual logging friction (no health-platform read on web) | Medium | Ten-second log, brief still works on partial data; calendar OAuth in Phase 1; wearable APIs in Phase 2+ |
 | LLM cost/latency at scale | Low now | Pre-compute briefs, cache foods, rate-limit; revisit at growth |
 
 ---
@@ -186,8 +187,8 @@ Phasing mirrors the PRD. **Spikes come before committed builds** so the risky un
 - **Exit gate:** go / adjust-approach / narrow-scope decision. *Nothing in Phase 1 starts until this passes.*
 
 ### Phase 0 — Thin-slice MVP *(Morning Brief that reads your week)*
-- **M0.1** Skeleton: Expo app, FastAPI backend, Postgres, auth.
-- **M0.2** HealthKit read (movement) + calendar read.
+- **M0.1** Skeleton: React web app (PWA), FastAPI backend, Postgres, auth.
+- **M0.2** Quick log (sessions, sleep, busy blocks); Google Calendar read follows in Phase 1.
 - **M0.3** Deterministic engine v1: qualitative food focus + movement rec + calendar-aware shift, emitting reason codes.
 - **M0.4** LLM orchestrator: render the 3-line brief from engine output.
 - **M0.5** Morning job pre-computes brief; push nudge; instant open.
@@ -207,14 +208,14 @@ Phasing mirrors the PRD. **Spikes come before committed builds** so the risky un
 - **Milestone / success:** measurable lift in Day-42 retention vs. Phase 1 cohort.
 
 ### Phase 3 — Depth *(post-validation)*
-- Android / Health Connect; richer wearable signals; opt-in precision mode; private accountability partner.
+- Wearable / Strava-class integrations for automatic movement capture; richer recovery signals; opt-in precision mode; private accountability partner; native wrapper if health-platform access proves essential.
 
 ---
 
 ## 9. Open Technical Decisions
 
 *Blocking:*
-- **Platform first** — recommendation: iOS/Expo (see §3). Confirm.
+- ~~**Platform first**~~ — decided: web app (PWA) first (see §3).
 - **Food approach** — pending **Spike 0** outcome.
 - **LLM provider(s)** — pick primary + fallback; validate vision accuracy and data-handling terms.
 

@@ -37,12 +37,12 @@ def run(on: date, push: bool = True) -> dict[str, int]:
                 stats["failed"] += 1
                 continue
             prof = db.get(models.Profile, user.id)
-            token = (prof.constraints_json or {}).get("push_token") if prof else None
+            sub = (prof.constraints_json or {}).get("push_subscription") if prof else None
             if (
                 push
-                and token
+                and sub
                 and day.brief_json
-                and send_push(token, "Your day, in three lines", day.brief_json["lines"][0])
+                and send_push(sub, "Your day, in three lines", day.brief_json["lines"][0])
             ):
                 stats["pushed"] += 1
     log.info("morning brief %s: %s", on.isoformat(), stats)

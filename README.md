@@ -5,18 +5,18 @@ Phase 0 ("Morning Brief that reads your week") of the plan in
 
 ```
 backend/   FastAPI · deterministic coaching engine · LLM orchestrator · morning job
-mobile/    Expo (iOS first) · Morning Brief screen · HealthKit + calendar sync
+web/       React + Vite PWA, mobile-first · Brief · Log · Settings
 ```
 
 ## What works today
 
 | Milestone | Status |
 |---|---|
-| M0.1 Skeleton: API, Postgres/SQLite, bearer auth (dev + HS256 JWT) | done |
-| M0.2 HealthKit + calendar read | client code written, needs a device build to verify |
+| M0.1 Skeleton: web app, API, Postgres/SQLite, bearer auth (dev + HS256 JWT) | done |
+| M0.2 Quick log: sessions, sleep, busy blocks (manual; calendar OAuth is Phase 1) | done, browser-tested |
 | M0.3 Deterministic engine v1 with reason codes and safety rails | done, 22 unit tests |
 | M0.4 Orchestrator: 3-line brief (Claude, strict validation, template fallback) | done |
-| M0.5 Morning job pre-computes briefs + Expo push nudge | done |
+| M0.5 Morning job pre-computes briefs + Web Push nudge | done |
 
 ## Backend
 
@@ -24,7 +24,7 @@ mobile/    Expo (iOS first) · Morning Brief screen · HealthKit + calendar sync
 cd backend
 uv venv .venv && uv pip install --python .venv/bin/python -e ".[dev]"
 cp .env.example .env          # defaults: SQLite, dev auth, no LLM key → template briefs
-.venv/bin/pytest              # 39 tests
+.venv/bin/pytest              # 45 tests
 .venv/bin/uvicorn app.main:app --reload   # http://localhost:8000/docs
 ```
 
@@ -79,22 +79,28 @@ so an export path can exclude them. Column-level encryption is a Phase 1 item.
 | `CORNER_BRIEF_MODEL` | `claude-opus-5` | any current Claude model id |
 | `ANTHROPIC_API_KEY` | unset | unset = template briefs, no LLM calls |
 
-## Mobile
+## Web app
 
-Expo + TypeScript, iOS first. `npm install && npx expo run:ios` (HealthKit needs a dev
-build, not Expo Go). Set `EXPO_PUBLIC_API_BASE` to the backend URL.
+```bash
+cd web
+npm install
+cp .env.example .env.local     # VITE_API_BASE, defaults to http://localhost:8000
+npm run dev                    # http://localhost:5173
+```
 
-- `src/screens/MorningBriefScreen.tsx` — the three lines, "Why did you say that?" with
-  reason codes in plain words, pull-to-refresh re-syncs and recomputes.
-- `src/sync/health.ts` — HealthKit workouts → normalized activities (type, minutes, coarse
-  intensity). Raw samples stay on the phone.
-- `src/sync/calendar.ts` — today's events → start/end/coarse type only.
+Mobile-first, installable as a PWA. Three tabs:
 
-The mobile code has **not** been built or run in this environment (no iOS toolchain);
-treat it as a reviewed scaffold until the first device build.
+- **Brief** — the three lines, "Why did you say that?" with reason codes in plain words,
+  and Recompute. Opening it records the brief-open metric.
+- **Log** — last night's sleep, a session (date, type, minutes, how hard), and today's
+  busy blocks (times only). Any change re-shapes the brief on the next view.
+- **Settings** — goal, sessions per week, usual steps, day start/end, coaching tone.
+
+Auth is a dev token in `localStorage` until managed auth lands. The backend's
+`CORNER_CORS_ORIGINS` must include the web origin.
 
 ## Next
 
 1. Run the backend against Neon/Supabase Postgres and switch auth to `jwt`.
-2. First device build; verify HealthKit + calendar permissions and the brief open flow.
+2. Google Calendar OAuth read so busy blocks stop being manual.
 3. Spike 0 (food estimation) before any Phase 1 work — see the design doc §8.

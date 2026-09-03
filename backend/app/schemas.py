@@ -16,11 +16,19 @@ class ProfileIn(BaseModel):
     day_start: str = Field(default="06:00", pattern=r"^\d{2}:\d{2}$")
     day_end: str = Field(default="22:00", pattern=r"^\d{2}:\d{2}$")
     coaching_tone: str = Field(default="warm", max_length=32)
-    push_token: str | None = Field(default=None, max_length=255)
 
 
 class ProfileOut(ProfileIn):
     user_id: str
+    push_enabled: bool = False
+
+
+class PushSubscriptionIn(BaseModel):
+    """The browser's PushSubscription.toJSON()."""
+
+    endpoint: str = Field(max_length=2000)
+    keys: dict[str, str]
+    expirationTime: int | None = None  # noqa: N815 (browser field name)
 
 
 class ActivityIn(BaseModel):
@@ -31,6 +39,10 @@ class ActivityIn(BaseModel):
     source: str = Field(default="manual", max_length=32)
     source_ref: str | None = Field(default=None, max_length=255)
     ts: datetime | None = None
+
+
+class ActivityOut(ActivityIn):
+    id: str
 
 
 class ActivitiesIn(BaseModel):

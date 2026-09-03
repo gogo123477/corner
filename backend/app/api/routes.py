@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.auth import current_user
+from app.config import get_settings
 from app.db import get_db
 from app.engine.types import DayPlan
 from app.service import compute_day
@@ -31,7 +32,7 @@ def get_profile(user: models.User = Depends(current_user), db: Session = Depends
         day_start=prof.day_start,
         day_end=prof.day_end,
         coaching_tone=prof.coaching_tone,
-        push_token=prof.constraints_json.get("push_token"),
+        push_enabled=bool((prof.constraints_json or {}).get("push_subscription")),
     )
 
 
@@ -48,10 +49,45 @@ def put_profile(
     prof.day_start = body.day_start
     prof.day_end = body.day_end
     prof.coaching_tone = body.coaching_tone
-    prof.constraints_json = {**(prof.constraints_json or {}), "push_token": body.push_token}
     db.add(prof)
     db.commit()
     return get_profile(user, db)
+
+
+# ---------- push ----------
+
+
+@router.get("/push/vapid-public-key")
+def vapid_public_key():
+    return {"key": get_settings().vapid_public_key}
+
+
+@router.post("/push/subscribe", status_code=204)
+def push_subscribe(
+    body: schemas.PushSubscriptionIn,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    prof = db.get(models.Profile, user.id) or models.Profile(user_id=user.id)
+    prof.constraints_json = {
+        **(prof.constraints_json or {}),
+        "push_subscription": body.model_dump(),
+    }
+    db.add(prof)
+    db.commit()
+    return None
+
+
+@router.delete("/push/subscribe", status_code=204)
+def push_unsubscribe(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    prof = db.get(models.Profile, user.id)
+    if prof and (prof.constraints_json or {}).get("push_subscription"):
+        prof.constraints_json = {
+            k: v for k, v in prof.constraints_json.items() if k != "push_subscription"
+        }
+        db.add(prof)
+        db.commit()
+    return None
 
 
 # ---------- inputs ----------
@@ -88,6 +124,81 @@ def post_activities(
         row.intensity = a.intensity.value
     db.commit()
     return {"inserted": inserted, "updated": updated}
+
+
+@router.get("/activities", response_model=list[schemas.ActivityOut])
+def list_activities(
+    since: date,
+    until: date | None = None,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    q = select(models.Activity).where(
+        models.Activity.user_id == user.id, models.Activity.on_date >= since
+    )
+    if until:
+        q = q.where(models.Activity.on_date <= until)
+    rows = db.scalars(q.order_by(models.Activity.on_date.desc())).all()
+    return [
+        schemas.ActivityOut(
+            id=r.id,
+            on=r.on_date,
+            type=r.type,
+            duration_min=r.duration_min,
+            intensity=r.intensity,
+            source=r.source,
+            source_ref=r.source_ref,
+            ts=r.ts,
+        )
+        for r in rows
+    ]
+
+
+@router.delete("/activities/{activity_id}", status_code=204)
+def delete_activity(
+    activity_id: str,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(models.Activity, activity_id)
+    if row is None or row.user_id != user.id:
+        raise HTTPException(404, "activity not found")
+    db.delete(row)
+    db.commit()
+    return None
+
+
+@router.get("/recovery/{on}", response_model=schemas.RecoveryIn)
+def get_recovery(
+    on: date, user: models.User = Depends(current_user), db: Session = Depends(get_db)
+):
+    row = db.scalar(
+        select(models.RecoveryDay).where(
+            models.RecoveryDay.user_id == user.id, models.RecoveryDay.on_date == on
+        )
+    )
+    return schemas.RecoveryIn(
+        on=on,
+        sleep_hours=row.sleep_hours if row else None,
+        resting_hr_delta_bpm=row.resting_hr_delta_bpm if row else None,
+    )
+
+
+@router.get("/calendar/{on}", response_model=schemas.CalendarDayIn)
+def get_calendar(
+    on: date, user: models.User = Depends(current_user), db: Session = Depends(get_db)
+):
+    rows = db.scalars(
+        select(models.CalEvent)
+        .where(models.CalEvent.user_id == user.id, models.CalEvent.on_date == on)
+        .order_by(models.CalEvent.start)
+    ).all()
+    return schemas.CalendarDayIn(
+        events=[
+            schemas.CalendarEventIn(start=r.start, end=r.end, coarse_type=r.coarse_type)
+            for r in rows
+        ]
+    )
 
 
 @router.post("/recovery", status_code=202)
