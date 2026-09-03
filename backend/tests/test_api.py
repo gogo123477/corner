@@ -3,8 +3,22 @@ from datetime import date, timedelta
 TODAY = date(2026, 9, 2)
 
 
-def test_health(client):
-    assert client.get("/health").json() == {"ok": True}
+def test_health_reports_db(client):
+    assert client.get("/health").json() == {"ok": True, "db": "sqlite"}
+
+
+def test_db_failure_is_a_clear_503(client, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    from app.api import routes
+
+    def boom(*a, **k):
+        raise OperationalError("SELECT 1", {}, Exception("unable to open database file"))
+
+    monkeypatch.setattr(routes, "compute_day", boom)
+    r = client.get("/v1/brief/2026-09-02")
+    assert r.status_code == 503
+    assert r.json()["detail"].startswith("Database unavailable")
 
 
 def test_requires_auth(client):

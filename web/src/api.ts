@@ -56,7 +56,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}`, ...(init.headers ?? {}) },
   });
-  if (!res.ok) throw new Error(`${init.method ?? "GET"} ${path} failed (${res.status})`);
+  if (!res.ok) {
+    let detail = "";
+    try { detail = (await res.json()).detail ?? ""; } catch { /* not JSON */ }
+    throw new Error(`${init.method ?? "GET"} ${path} failed (${res.status})${detail ? `: ${detail}` : ""}`);
+  }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }

@@ -39,7 +39,7 @@ export function BriefScreen({ refreshKey }: { refreshKey: number }) {
     <section className="brief" aria-busy={busy}>
       <span className="eyebrow">{dateLabel}</span>
       <h1>Your day, in three lines</h1>
-      {error ? <p className="error">{error}. Is the backend running?</p> : null}
+      {error ? <p className="error">{error}</p> : null}
       {!brief && busy ? [0, 1, 2].map((i) => <div key={i} className="line"><div className="skeleton" /></div>) : null}
       {brief?.lines.map((line, i) => (
         <div className="line" key={i}>
