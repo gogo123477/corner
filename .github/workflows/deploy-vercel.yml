@@ -1,0 +1,92 @@
+name: Deploy to Vercel
+
+# Two ways to run:
+#  - manually (Actions → Deploy to Vercel → Run workflow) with a Vercel token as input;
+#  - on every push to main, if a VERCEL_TOKEN repository secret is set.
+on:
+  workflow_dispatch:
+    inputs:
+      vercel_token:
+        description: "Vercel token (leave empty to use the VERCEL_TOKEN secret)"
+        required: false
+      database_url:
+        description: "CORNER_DATABASE_URL (Neon postgres://…); leave empty to keep the current value"
+        required: false
+      anthropic_api_key:
+        description: "ANTHROPIC_API_KEY (optional; unset = template briefs)"
+        required: false
+  push:
+    branches: [main]
+
+concurrency: deploy-vercel
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: Resolve token
+        id: tok
+        env:
+          INPUT_TOKEN: ${{ inputs.vercel_token }}
+          SECRET_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          T="${INPUT_TOKEN:-$SECRET_TOKEN}"
+          if [ -z "$T" ]; then echo "No Vercel token: skipping deploy."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "::add-mask::$T"
+          echo "token=$T" >> "$GITHUB_OUTPUT"
+
+      - name: Install Vercel CLI
+        if: steps.tok.outputs.skip != 'true'
+        run: npm i -g vercel@latest
+
+      - name: Create / link project
+        if: steps.tok.outputs.skip != 'true'
+        env: { VERCEL_TOKEN: "${{ steps.tok.outputs.token }}" }
+        run: |
+          vercel project add corner --token "$VERCEL_TOKEN" 2>/dev/null || true
+          vercel link --yes --project corner --token "$VERCEL_TOKEN"
+
+      - name: Environment variables
+        if: steps.tok.outputs.skip != 'true'
+        env:
+          VERCEL_TOKEN: "${{ steps.tok.outputs.token }}"
+          DATABASE_URL_IN: "${{ inputs.database_url }}"
+          ANTHROPIC_IN: "${{ inputs.anthropic_api_key }}"
+        run: |
+          pip install -q cryptography
+          existing=$(vercel env ls production --token "$VERCEL_TOKEN" 2>/dev/null || true)
+          setvar() {  # setvar NAME VALUE  → set on production (replace if present)
+            echo "::add-mask::$2"
+            vercel env rm "$1" production --yes --token "$VERCEL_TOKEN" >/dev/null 2>&1 || true
+            printf '%s' "$2" | vercel env add "$1" production --token "$VERCEL_TOKEN" >/dev/null
+            echo "set $1"
+          }
+          has() { echo "$existing" | grep -q "^ *$1 "; }
+          has CRON_SECRET             || setvar CRON_SECRET "$(openssl rand -hex 32)"
+          has CORNER_TIMEZONE         || setvar CORNER_TIMEZONE "Asia/Jerusalem"
+          has CORNER_AUTH_MODE        || setvar CORNER_AUTH_MODE "dev"
+          has CORNER_VAPID_SUBJECT    || setvar CORNER_VAPID_SUBJECT "mailto:corner@example.com"
+          if ! has CORNER_VAPID_PUBLIC_KEY; then
+            eval "$(cd backend && python -c 'from app.jobs.push import keygen; p,s=keygen(); print(f"PUB={p}\nPRIV={s}")')"
+            setvar CORNER_VAPID_PUBLIC_KEY "$PUB"; setvar CORNER_VAPID_PRIVATE_KEY "$PRIV"
+          fi
+          [ -n "$DATABASE_URL_IN" ] && setvar CORNER_DATABASE_URL "$DATABASE_URL_IN"
+          [ -n "$ANTHROPIC_IN" ]    && setvar ANTHROPIC_API_KEY "$ANTHROPIC_IN"
+          has CORNER_DATABASE_URL || [ -n "$DATABASE_URL_IN" ] || echo "::warning::CORNER_DATABASE_URL is not set — the API will answer 503 until it is."
+
+      - name: Deploy (production)
+        if: steps.tok.outputs.skip != 'true'
+        env: { VERCEL_TOKEN: "${{ steps.tok.outputs.token }}" }
+        run: |
+          url=$(vercel deploy --prod --yes --token "$VERCEL_TOKEN" 2>deploy.err | tail -1)
+          cat deploy.err >&2 || true
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "### Deployed: $url" >> "$GITHUB_STEP_SUMMARY"
+          sleep 5
+          echo "health: $(curl -s "$url/health")" | tee -a "$GITHUB_STEP_SUMMARY"
