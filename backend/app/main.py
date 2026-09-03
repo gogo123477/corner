@@ -44,8 +44,12 @@ app.include_router(router)
 async def _db_error(_: Request, exc: Exception):
     hint = ""
     if engine.url.get_backend_name() == "sqlite" and os.environ.get("VERCEL"):
-        hint = " CORNER_DATABASE_URL is not set, so the app fell back to SQLite, which cannot run on Vercel."
-    return JSONResponse(503, {"detail": f"Database unavailable: {str(exc).splitlines()[0]}.{hint}"})
+        hint = (
+            " CORNER_DATABASE_URL is not set, so the app fell back to SQLite,"
+            " which cannot run on Vercel."
+        )
+    first_line = str(exc).splitlines()[0]
+    return JSONResponse({"detail": f"Database unavailable: {first_line}.{hint}"}, status_code=503)
 
 
 @app.get("/health")
@@ -62,6 +66,7 @@ def health():
             else ""
         )
         return JSONResponse(
-            503, {"ok": False, "db": backend, "error": str(exc).splitlines()[0] + hint}
+            {"ok": False, "db": backend, "error": str(exc).splitlines()[0] + hint},
+            status_code=503,
         )
     return {"ok": True, "db": backend}
